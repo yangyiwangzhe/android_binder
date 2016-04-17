@@ -104,17 +104,36 @@ enum {
 	BINDER_DEBUG_PRIORITY_CAP           = 1U << 14,
 	BINDER_DEBUG_BUFFER_ALLOC_ASYNC     = 1U << 15,
 };
+
+//调试信息的掩码
+/*
+binder_debug(BINDER_DEBUG_INTERNAL_REFS,XXXX)
+BINDER_DEBUG_INTERNAL_REFS 如果加入到binder_debug_mask中就会打印
+
+*/
 static uint32_t binder_debug_mask = BINDER_DEBUG_USER_ERROR |
 	BINDER_DEBUG_FAILED_TRANSACTION | BINDER_DEBUG_DEAD_TRANSACTION;
+
+/*
+	debug_mask 标识模块的名字 binder_debug_mask变量值 uint说明是整形  S_IWUSR | S_IRUGO权限
+	binder_debug_mask = 7
+	/sys/module/binder/parameters # cat debug_mask
+	=7
+*/
 module_param_named(debug_mask, binder_debug_mask, uint, S_IWUSR | S_IRUGO);
 
 static int binder_debug_no_lock;
 module_param_named(proc_no_lock, binder_debug_no_lock, bool, S_IWUSR | S_IRUGO);
 
-//声明一个等待队列
+
+
+/*
+	声明一个回调函数模块声明
+	shell@tiny4412:/sys/module/binder/parameters 
+	-rw-r--r-- root     root    stop_on_user_error
+*/
 static DECLARE_WAIT_QUEUE_HEAD(binder_user_error_wait);
 static int binder_stop_on_user_error;
-
 static int binder_set_stop_on_user_error(const char *val,
 					 struct kernel_param *kp)
 {
@@ -134,7 +153,7 @@ module_param_call(stop_on_user_error, binder_set_stop_on_user_error,
 		if (binder_debug_mask & mask) \
 			printk(KERN_INFO x); \
 	} while (0)
-
+//对应的binder错误调试信息
 #define binder_user_error(x...) \
 	do { \
 		if (binder_debug_mask & BINDER_DEBUG_USER_ERROR) \
@@ -143,6 +162,8 @@ module_param_call(stop_on_user_error, binder_set_stop_on_user_error,
 			binder_stop_on_user_error = 2; \
 	} while (0)
 
+
+//binder的状态
 enum binder_stat_types {
 	BINDER_STAT_PROC,
 	BINDER_STAT_THREAD,
@@ -154,14 +175,15 @@ enum binder_stat_types {
 	BINDER_STAT_COUNT
 };
 
+/**/
 struct binder_stats {
 	int br[_IOC_NR(BR_FAILED_REPLY) + 1];
 	int bc[_IOC_NR(BC_DEAD_BINDER_DONE) + 1];
 	int obj_created[BINDER_STAT_COUNT];
 	int obj_deleted[BINDER_STAT_COUNT];
 };
-
 static struct binder_stats binder_stats;
+
 
 static inline void binder_stats_deleted(enum binder_stat_types type)
 {
@@ -173,21 +195,24 @@ static inline void binder_stats_created(enum binder_stat_types type)
 	binder_stats.obj_created[type]++;
 }
 
+
+//binder 传输 log 表项
 struct binder_transaction_log_entry {
 	int debug_id;
-	int call_type;
-	int from_proc;
-	int from_thread;
-	int target_handle;
-	int to_proc;
-	int to_thread;
-	int to_node;
-	int data_size;
-	int offsets_size;
+	int call_type;//调用类型
+	int from_proc;//源进程
+	int from_thread;//源线程
+	int target_handle;//目标句柄
+	int to_proc;//目标的进程
+	int to_thread;//目标线程
+	int to_node;//目标实体对象
+	int data_size;//数据的大小
+	int offsets_size;//偏移的大小
 };
 struct binder_transaction_log {
 	int next;
 	int full;
+	//传输log表项池
 	struct binder_transaction_log_entry entry[32];
 };
 static struct binder_transaction_log binder_transaction_log;
@@ -228,11 +253,14 @@ struct binder_node {
 		struct rb_node rb_node;
 		struct hlist_node dead_node;
 	};
+	//binder实体对象拥有的进程
 	struct binder_proc *proc;
+	//引用对象链表
 	struct hlist_head refs;
 	int internal_strong_refs;
 	int local_weak_refs;
 	int local_strong_refs;
+	//用户空间指针imp用户结构体
 	void __user *ptr;
 	void __user *cookie;
 	unsigned has_strong_ref:1;//强引用
@@ -245,11 +273,13 @@ struct binder_node {
 	struct list_head async_todo;
 };
 
+//binder引用对象的死亡链表
 struct binder_ref_death {
 	struct binder_work work;
 	void __user *cookie;
 };
 
+//binder的引用结构体
 struct binder_ref {
 	/* Lookups needed: */
 	/*   node + proc => ref (transaction) */
@@ -276,11 +306,13 @@ struct binder_buffer {
 				/* by address */
 	unsigned free:1;//是否是空闲
 	unsigned allow_user_free:1;//是否允许用户释放
-	unsigned async_transaction:1;
+	unsigned async_transaction:1;//同步还是异步
 	unsigned debug_id:29;//id号
 
+	//binder数据的传输
 	struct binder_transaction *transaction;
 
+	//目标的实体对象
 	struct binder_node *target_node;
 	size_t data_size;//数据区的大小
 	size_t offsets_size;//数据偏移
@@ -298,9 +330,10 @@ struct binder_proc {
 	struct hlist_node proc_node;//hash链表节点 表示当前进程结构体
 	struct rb_root threads;
 	struct rb_root nodes;
-	struct rb_root refs_by_desc;
-	struct rb_root refs_by_node;
-	int pid;
+	//引用成员红蓝树
+	struct rb_root refs_by_desc;	//获取引用通过描述
+	struct rb_root refs_by_node; //获取引用通过实体对象
+	int pid;//pid号
 	struct vm_area_struct *vma;
 	struct mm_struct *vma_vm_mm;
 	struct task_struct *tsk;
@@ -356,6 +389,7 @@ struct binder_thread {
 	struct binder_stats stats;
 };
 
+//binder数据传输结构体
 struct binder_transaction {
 	int debug_id;
 	struct binder_work work;
@@ -516,16 +550,18 @@ out_unlock:
 	return -EBADF;
 }
 
+//具有优先级反转功能 以后继续学习
+//binder加锁
 static inline void binder_lock(const char *tag)
 {
 	rt_mutex_lock(&binder_main_lock);
 }
-
+//binder解锁
 static inline void binder_unlock(const char *tag)
 {
 	rt_mutex_unlock(&binder_main_lock);
 }
-
+//设置binder的优先级别
 static void binder_set_nice(long nice)
 {
 	long min_nice;
@@ -537,27 +573,35 @@ static void binder_set_nice(long nice)
 	binder_debug(BINDER_DEBUG_PRIORITY_CAP,
 		     "binder: %d: nice value %ld not allowed use "
 		     "%ld instead\n", current->pid, nice, min_nice);
+	//设置用户binder最小优先级
 	set_user_nice(current, min_nice);
 	if (min_nice < 20)
 		return;
 	binder_user_error("binder: %d RLIMIT_NICE not set\n", current->pid);
 }
 
-//计算缓冲区的大小
+//计算缓冲区的大小，proc指定的目标进程
 static size_t binder_buffer_size(struct binder_proc *proc,
+//目标的buff
 				 struct binder_buffer *buffer)
 {
+	//判断是否是最后一个链表单元
 	if (list_is_last(&buffer->entry, &proc->buffers))
+		//proc->buffer + proc->buffer_size指向链表最后的地址
+		//buffer->data 指向当前buff的数据存贮的首地址，相减就是缓冲去的大小
 		return proc->buffer + proc->buffer_size - (void *)buffer->data;
 	else
+		//如果不是最后一个元素
 		return (size_t)list_entry(buffer->entry.next,
 			struct binder_buffer, entry) - (size_t)buffer->data;
 }
-//将binder插入空间缓冲区
+//将binder插入空间缓冲区 这个内存缓冲区已经分配
 static void binder_insert_free_buffer(struct binder_proc *proc,
+//要插入binder_buff
 				      struct binder_buffer *new_buffer)
 {
-	struct rb_node **p = &proc->free_buffers.rb_node;//可用的缓冲空间
+	//可用的缓冲空间
+	struct rb_node **p = &proc->free_buffers.rb_node;
 	struct rb_node *parent = NULL;
 	struct binder_buffer *buffer;
 	size_t buffer_size;
@@ -566,32 +610,42 @@ static void binder_insert_free_buffer(struct binder_proc *proc,
 	BUG_ON(!new_buffer->free);
 //	proc->buffer_size = vma->vm_end - vma->vm_start;
 	new_buffer_size = binder_buffer_size(proc, new_buffer);
-
+//	binder 调试信息
 	binder_debug(BINDER_DEBUG_BUFFER_ALLOC,
+			//进程id  buff的大小 newbuf的地址
 		     "binder: %d: add free buffer, size %zd, "
 		     "at %p\n", proc->pid, new_buffer_size, new_buffer);
 
 	//遍历所有空闲缓冲空间
+	//p = &proc->free_buffers 
 	while (*p) {
+		//指向红蓝节点，当前的节点
 		parent = *p;
+		//parent(rb_node**)节点，struct binder_buffer类型，rb_node成员
+		//返回包含成员的结构体
 		buffer = rb_entry(parent, struct binder_buffer, rb_node);
 		BUG_ON(!buffer->free);
 
-		//获得缓冲区的大小
+		//获得此缓冲区的大小
 		buffer_size = binder_buffer_size(proc, buffer);
-
+		//新的buff大小进行红蓝排序，缓冲区蓝红左小右大
 		if (new_buffer_size < buffer_size)
-			p = &parent->rb_left;
+			//找到左边子节点
+			p = &parent->rb_left;//插入的binder缓冲区小于当前缓冲区的大小
 		else
+			//找到右边子节点
 			p = &parent->rb_right;
 	}
+	//插入到对应的子节点
 	rb_link_node(&new_buffer->rb_node, parent, p);
 	rb_insert_color(&new_buffer->rb_node, &proc->free_buffers);
 }
 
+//插入一个分配的缓冲区
 static void binder_insert_allocated_buffer(struct binder_proc *proc,
 					   struct binder_buffer *new_buffer)
 {
+	//已经分配的buff
 	struct rb_node **p = &proc->allocated_buffers.rb_node;
 	struct rb_node *parent = NULL;
 	struct binder_buffer *buffer;
@@ -614,50 +668,68 @@ static void binder_insert_allocated_buffer(struct binder_proc *proc,
 	rb_insert_color(&new_buffer->rb_node, &proc->allocated_buffers);
 }
 
+
+//查询buff
 static struct binder_buffer *binder_buffer_lookup(struct binder_proc *proc,
 						  void __user *user_ptr)
 {
+	//已经分配的buff节点
 	struct rb_node *n = proc->allocated_buffers.rb_node;
 	struct binder_buffer *buffer;
 	struct binder_buffer *kern_ptr;
-
+	//user_ptr - proc->user_buffer_offset得到此结构体内核地址
 	kern_ptr = user_ptr - proc->user_buffer_offset
+		//data地址  该宏用于求结构体中一个成员在该结构体中的偏移量。
 		- offsetof(struct binder_buffer, data);
 
 	while (n) {
+		//通过结构体内部成员，获得结构体
 		buffer = rb_entry(n, struct binder_buffer, rb_node);
 		BUG_ON(buffer->free);
-
+		//遍历rb树，其排序是通过地址
 		if (kern_ptr < buffer)
 			n = n->rb_left;
 		else if (kern_ptr > buffer)
 			n = n->rb_right;
 		else
+			//找到对应的buff，并返回。
 			return buffer;
 	}
 	return NULL;
 }
 
+//更新页
+//binder_proc 目标进程
+//if (binder_update_page_range(proc, 1, proc->buffer, proc->buffer + PAGE_SIZE, vma)) {
 static int binder_update_page_range(struct binder_proc *proc, int allocate,
-				    void *start, void *end,
+				//操作内核的起始和结束地址
+				void *start, void *end,
+				    //用户空间地址
 				    struct vm_area_struct *vma)
 {
+	//页的地址
 	void *page_addr;
+	//内核空间地址
 	unsigned long user_page_addr;
+	//内核空前
 	struct vm_struct tmp_area;
 	struct page **page;
 	struct mm_struct *mm;
 
+	//打印是分配还是释放页内存
 	binder_debug(BINDER_DEBUG_BUFFER_ALLOC,
 		     "binder: %d: %s pages %p-%p\n", proc->pid,
 		     allocate ? "allocate" : "free", start, end);
 
+	//说明分配有问题
 	if (end <= start)
 		return 0;
 
-	if (vma)//=1
+	//内核空间地址
+	if (vma)
 		mm = NULL;
 	else
+		//获取任务内存
 		mm = get_task_mm(proc->tsk);
 
 	if (mm) {
@@ -669,7 +741,7 @@ static int binder_update_page_range(struct binder_proc *proc, int allocate,
 			vma = NULL;
 		}
 	}
-
+	//说明是释放内存
 	if (allocate == 0)
 		goto free_range;
 
@@ -679,22 +751,32 @@ static int binder_update_page_range(struct binder_proc *proc, int allocate,
 		goto err_no_vma;
 	}
 
-	//分配物理页面
+	//分配物理页面，page_addr = start是开始页地址
+	//page_addr < end结束页地址
+	//start = proc->buffer  end = proc->buffer + PAGE_SIZE
 	for (page_addr = start; page_addr < end; page_addr += PAGE_SIZE) {
 		int ret;
+		//页指针
 		struct page **page_array_ptr;
+		//void *buffer; 分配的内存 proc->pages[]；其是指向一个页的内存
 		page = &proc->pages[(page_addr - proc->buffer) / PAGE_SIZE];
 
-		BUG_ON(*page);
+		BUG_ON(*page); 
+		//分配一个页的内核内存空间  *page是一个内核内存的指针
 		*page = alloc_page(GFP_KERNEL | __GFP_HIGHMEM | __GFP_ZERO);
 		if (*page == NULL) {
 			printk(KERN_ERR "binder: %d: binder_alloc_buf failed "
 			       "for page at %p\n", proc->pid, page_addr);
 			goto err_alloc_page_failed;
 		}
-		tmp_area.addr = page_addr;
+
+		//下面几行的代码是将分配的内核内存映射到内核空间地址上	
+		//内核的地址
+		tmp_area.addr = page_addr;//页的地址
 		tmp_area.size = PAGE_SIZE + PAGE_SIZE /* guard page? */;
+		//一个页的物理内存指针
 		page_array_ptr = page;
+		//将内核的空间映射到用户空间，tmp_area 是临时的映射到用内核间的内存
 		ret = map_vm_area(&tmp_area, PAGE_KERNEL, &page_array_ptr);
 		if (ret) {
 			printk(KERN_ERR "binder: %d: binder_alloc_buf failed "
@@ -702,8 +784,13 @@ static int binder_update_page_range(struct binder_proc *proc, int allocate,
 			       proc->pid, page_addr);
 			goto err_map_kernel_failed;
 		}
+
+
+		//下面几行的代码是将内存空间映射到用户空间地址上
+		//得到用户空间地址
 		user_page_addr =
 			(uintptr_t)page_addr + proc->user_buffer_offset;
+		//插入到用户内存中 vma用户空间 映射进用户空间
 		ret = vm_insert_page(vma, user_page_addr, page[0]);
 		if (ret) {
 			printk(KERN_ERR "binder: %d: binder_alloc_buf failed "
@@ -933,6 +1020,7 @@ static void binder_free_buf(struct binder_proc *proc,
 		     "binder: %d: binder_free_buf %p size %zd buffer"
 		     "_size %zd\n", proc->pid, buffer, size, buffer_size);
 
+	//如果条件为真则打印堆栈信息
 	BUG_ON(buffer->free);
 	BUG_ON(size > buffer_size);
 	BUG_ON(buffer->transaction != NULL);
@@ -974,10 +1062,14 @@ static void binder_free_buf(struct binder_proc *proc,
 	binder_insert_free_buffer(proc, buffer);
 }
 
+
+//获得binder 实体对象结构体
 static struct binder_node *binder_get_node(struct binder_proc *proc,
 					   void __user *ptr)
 {
+	//获得红蓝节点
 	struct rb_node *n = proc->nodes.rb_node;
+	//binder实体结构体
 	struct binder_node *node;
 
 	while (n) {
@@ -993,12 +1085,15 @@ static struct binder_node *binder_get_node(struct binder_proc *proc,
 	return NULL;
 }
 
+//新创建一个binder node实体对象
 static struct binder_node *binder_new_node(struct binder_proc *proc,
 					   void __user *ptr,
 					   void __user *cookie)
 {
+	//调用进程的红蓝节点
 	struct rb_node **p = &proc->nodes.rb_node;
 	struct rb_node *parent = NULL;
+	//binder的实体对象
 	struct binder_node *node;
 
 	while (*p) {
@@ -1016,16 +1111,21 @@ static struct binder_node *binder_new_node(struct binder_proc *proc,
 	node = kzalloc(sizeof(*node), GFP_KERNEL);
 	if (node == NULL)
 		return NULL;
+	//初始化binder实体对象的状态
 	binder_stats_created(BINDER_STAT_NODE);
 	rb_link_node(&node->rb_node, parent, p);
 	rb_insert_color(&node->rb_node, &proc->nodes);
+	//设置实体对象
 	node->debug_id = ++binder_last_id;
 	node->proc = proc;
 	node->ptr = ptr;
 	node->cookie = cookie;
 	node->work.type = BINDER_WORK_NODE;
+	//初始化binder工作链表
 	INIT_LIST_HEAD(&node->work.entry);
 	INIT_LIST_HEAD(&node->async_todo);
+
+	//打印调试信息
 	binder_debug(BINDER_DEBUG_INTERNAL_REFS,
 		     "binder: %d:%d node %d u%p c%p created\n",
 		     proc->pid, current->pid, node->debug_id,
@@ -1033,6 +1133,7 @@ static struct binder_node *binder_new_node(struct binder_proc *proc,
 	return node;
 }
 
+//
 static int binder_inc_node(struct binder_node *node, int strong, int internal,
 			   struct list_head *target_list)
 {
@@ -2911,18 +3012,20 @@ static struct vm_operations_struct binder_vm_ops = {
 	.close = binder_vma_close,
 };
 
-//内部存储的映射
+//内部存储的映射  vm_area_struct 用户空间地址
 static int binder_mmap(struct file *filp, struct vm_area_struct *vma)
 { 
 	int ret;
 	//内核空间
 	struct vm_struct *area;
 	struct binder_proc *proc = filp->private_data;
+	//失败的字符串
 	const char *failure_string;
+	//binder 缓冲区
 	struct binder_buffer *buffer;
 
 
-	//最多分配4M内存空间
+	//最多分配4M内存空间 分配的空间是否大于4M
 	if ((vma->vm_end - vma->vm_start) > SZ_4M)
 		vma->vm_end = vma->vm_start + SZ_4M;
 
@@ -2930,8 +3033,10 @@ static int binder_mmap(struct file *filp, struct vm_area_struct *vma)
 	//打印调试信息
 	binder_debug(BINDER_DEBUG_OPEN_CLOSE,
 		     "binder_mmap: %d %lx-%lx (%ld K) vma %lx pagep %lx\n",
+		     //进程id  vma->vm_start用户空间的开始地址  vma->vm_end用户空间的结束地址
 		     proc->pid, vma->vm_start, vma->vm_end,
 		     (vma->vm_end - vma->vm_start) / SZ_1K, vma->vm_flags,
+		     //用户操作的权限
 		     (unsigned long)pgprot_val(vma->vm_page_prot));
 
 
@@ -2941,7 +3046,8 @@ static int binder_mmap(struct file *filp, struct vm_area_struct *vma)
 		failure_string = "bad vm_flags";
 		goto err_bad_arg;
 	}
-	//
+	
+	//虚拟内存的操作方式，允许拷贝，不允许直接随机写
 	vma->vm_flags = (vma->vm_flags | VM_DONTCOPY) & ~VM_MAYWRITE;
 
 	//加锁
@@ -2959,7 +3065,7 @@ static int binder_mmap(struct file *filp, struct vm_area_struct *vma)
 	寻找一个虚拟地址空间的大小
 	*/
 	//vma->vm_start 用户空间
-	//获取虚拟内核空间
+	//找到合适的内存分配一个内核vm_struct结构体，描述一块合适的内核连续内存区域
 	area = get_vm_area(vma->vm_end - vma->vm_start, VM_IOREMAP);
 	if (area == NULL) {
 		ret = -ENOMEM;
@@ -3004,8 +3110,11 @@ static int binder_mmap(struct file *filp, struct vm_area_struct *vma)
 		failure_string = "alloc small buf";
 		goto err_alloc_small_buf_failed;
 	}
+	//分配的进程buffer内核存储区域
 	buffer = proc->buffer;
+	//初始化进程buffer的链表
 	INIT_LIST_HEAD(&proc->buffers);
+	//将分配的内存添加到进程的buff链表中区
 	list_add(&buffer->entry, &proc->buffers);
 	buffer->free = 1;
 	binder_insert_free_buffer(proc, buffer);
@@ -3307,6 +3416,7 @@ binder_defer_work(struct binder_proc *proc, enum binder_deferred_state defer)
 	mutex_unlock(&binder_deferred_lock);
 }
 
+//打印数据的传输
 static void print_binder_transaction(struct seq_file *m, const char *prefix,
 				     struct binder_transaction *t)
 {
@@ -3373,7 +3483,7 @@ static void print_binder_work(struct seq_file *m, const char *prefix,
 		break;
 	}
 }
-
+//打印binder的线程
 static void print_binder_thread(struct seq_file *m,
 				struct binder_thread *thread,
 				int print_always)
@@ -3387,6 +3497,7 @@ static void print_binder_thread(struct seq_file *m,
 	header_pos = m->count;
 	t = thread->transaction_stack;
 	while (t) {
+		//数据的传递时会被调用
 		if (t->from == thread) {
 			print_binder_transaction(m,
 						 "    outgoing transaction", t);
@@ -3449,18 +3560,22 @@ static void print_binder_proc(struct seq_file *m,
 	size_t start_pos = m->count;
 	size_t header_pos;
 
+	//打印进程号
 	seq_printf(m, "proc %d\n", proc->pid);
 	header_pos = m->count;
-	
+
+	//扫描进程中每个线程，通过rb红蓝节点
 	for (n = rb_first(&proc->threads); n != NULL; n = rb_next(n))
 		print_binder_thread(m, rb_entry(n, struct binder_thread,
 						rb_node), print_all);
+	//
 	for (n = rb_first(&proc->nodes); n != NULL; n = rb_next(n)) {
 		struct binder_node *node = rb_entry(n, struct binder_node,
 						    rb_node);
 		if (print_all || node->has_async_transaction)
 			print_binder_node(m, node);
 	}
+	//是否打印全部
 	if (print_all) {
 		for (n = rb_first(&proc->refs_by_desc);
 		     n != NULL;
@@ -3468,6 +3583,7 @@ static void print_binder_proc(struct seq_file *m,
 			print_binder_ref(m, rb_entry(n, struct binder_ref,
 						     rb_node_desc));
 	}
+	//打印分配缓冲区
 	for (n = rb_first(&proc->allocated_buffers); n != NULL; n = rb_next(n))
 		print_binder_buffer(m, "  buffer",
 				    rb_entry(n, struct binder_buffer, rb_node));
@@ -3694,7 +3810,7 @@ static int binder_proc_show(struct seq_file *m, void *unused)
 		binder_lock(__func__);
 	//打印对应的调试信息
 	seq_puts(m, "binder proc state:\n");
-	
+	// 打印binder proc信息
 	print_binder_proc(m, proc, 1);
 	if (do_lock)
 		binder_unlock(__func__);
@@ -3819,3 +3935,4 @@ static int __init binder_init(void)
 device_initcall(binder_init);//设备子系统初始化
 
 MODULE_LICENSE("GPL v2");
+
